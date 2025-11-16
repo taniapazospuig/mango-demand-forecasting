@@ -9,6 +9,7 @@ import lightgbm as lgb
 from sklearn.metrics import mean_squared_error
 import optuna
 import warnings
+from datetime import datetime, timedelta
 warnings.filterwarnings('ignore')
 
 # Configuration
@@ -20,10 +21,42 @@ def load_and_prepare_train_data(filepath='train_processed.csv', return_seasons=F
     print("Loading training data...")
     df = pd.read_csv(filepath)
     
+    # Create new features from num_week_iso
+    if 'num_week_iso' in df.columns:
+        df["is_week23_peak"] = (df["num_week_iso"] == 23).astype(int)
+        # Black Friday is usually ISO week 47-48
+        df["is_black_friday_week"] = df["num_week_iso"].isin([47, 48]).astype(int)
+    
+    # Create historic average demand by ID
+    if 'ID' in df.columns and 'weekly_sales' in df.columns:
+        avg_sales_ID = df.groupby("ID")["weekly_sales"].mean()
+        df["avg_sales_ID"] = df["ID"].map(avg_sales_ID)
+        # Fill NaN with 0 for products without historical data
+        df["avg_sales_ID"] = df["avg_sales_ID"].fillna(0)
+    
+    # Create lag features grouped by ID and id_season
+    if 'ID' in df.columns and 'id_season' in df.columns and 'weekly_sales' in df.columns:
+        # Sort by ID, id_season, and num_week_iso to ensure proper ordering
+        if 'num_week_iso' in df.columns:
+            df = df.sort_values(['ID', 'id_season', 'num_week_iso']).reset_index(drop=True)
+        
+        # Create lag features
+        df["lag1"] = df.groupby(["ID", "id_season"])["weekly_sales"].shift(1)
+        df["lag2"] = df.groupby(["ID", "id_season"])["weekly_sales"].shift(2)
+        df["lag3"] = df.groupby(["ID", "id_season"])["weekly_sales"].shift(3)
+        df["lag4"] = df.groupby(["ID", "id_season"])["weekly_sales"].shift(4)
+        
+        # Compute 4-week moving average
+        df["lag_mean4"] = df[["lag1", "lag2", "lag3", "lag4"]].mean(axis=1)
+        
+        # Fill NaN values with 0 for lag features
+        df[["lag1", "lag2", "lag3", "lag4", "lag_mean4"]] = df[["lag1", "lag2", "lag3", "lag4", "lag_mean4"]].fillna(0)
+    
     # Define columns to exclude
     # Note: emb_pca_*, emb_cluster, emb_dist are included as features
     exclude_cols = ['color_name', 'image_embedding', 'embedding_array', 'ID', 'knit_structure', 
-                    'num_week_iso', 'weekly_demand', 'Production', 'weekly_sales']
+                    'num_week_iso', 'weekly_demand', 'Production', 'weekly_sales',
+                    'category', 'is_fall', 'waist_type', 'id_season', 'moment', 'woven_structure']
     
     # Get all features (all columns except excluded ones and target)
     all_features = [col for col in df.columns if col not in exclude_cols]
@@ -70,14 +103,28 @@ def load_and_prepare_train_data(filepath='train_processed.csv', return_seasons=F
     else:
         return X, y, object_cols
 
-def process_test_data(filepath='test_processed.csv', max_weeks=None, train_categorical_cols=None):
+def process_test_data(filepath='test_processed.csv', max_weeks=None, train_categorical_cols=None, 
+                      train_filepath='train_processed.csv'):
     """
     Process preprocessed test data to create rows for multiple weeks per product
     Uses life_cycle_length from each product to determine how many weeks to predict
     If life_cycle_length is missing, uses max_weeks (default 30) as fallback
+    
+    Args:
+        train_filepath: Path to training data file to compute avg_sales_ID from historical data
     """
     print("Loading preprocessed test data...")
     df_test = pd.read_csv(filepath)
+    
+    # Compute avg_sales_ID from training data if available
+    avg_sales_ID_map = None
+    try:
+        df_train = pd.read_csv(train_filepath)
+        if 'ID' in df_train.columns and 'weekly_sales' in df_train.columns:
+            avg_sales_ID_map = df_train.groupby("ID")["weekly_sales"].mean().to_dict()
+            print(f"Computed avg_sales_ID from training data for {len(avg_sales_ID_map)} products")
+    except Exception as e:
+        print(f"Warning: Could not load training data for avg_sales_ID: {e}")
     
     # Use life_cycle_length if available, otherwise use max_weeks (default 30)
     if max_weeks is None:
@@ -96,14 +143,68 @@ def process_test_data(filepath='test_processed.csv', max_weeks=None, train_categ
             # Fallback to max_weeks if life_cycle_length is missing
             num_weeks = max_weeks
         
+        # Get phase_in date if available for computing ISO week
+        phase_in_date = None
+        if 'phase_in' in row and pd.notna(row['phase_in']):
+            try:
+                # Try to parse the date (handle different formats)
+                if isinstance(row['phase_in'], str):
+                    phase_in_date = pd.to_datetime(row['phase_in'])
+                else:
+                    phase_in_date = pd.to_datetime(row['phase_in'])
+            except:
+                phase_in_date = None
+        
         # Create rows for weeks 1 to num_weeks for this product
         for week in range(1, num_weeks + 1):
             # Create a copy of the row and add weeks_since_launch
             row_dict = row.to_dict()
             row_dict['weeks_since_launch'] = week
+            
+            # Compute ISO week from phase_in date + weeks_since_launch
+            if phase_in_date is not None:
+                # Calculate the date for this week (phase_in + (week-1) weeks)
+                week_date = phase_in_date + timedelta(weeks=week-1)
+                # Get ISO week number
+                iso_year, iso_week, _ = week_date.isocalendar()
+                row_dict['num_week_iso'] = iso_week
+            else:
+                # If phase_in is not available, set to None (will be handled later)
+                row_dict['num_week_iso'] = None
+            
             product_rows.append(row_dict)
     
     df_processed = pd.DataFrame(product_rows)
+    
+    # Create new features from computed num_week_iso
+    if 'num_week_iso' in df_processed.columns:
+        # Fill missing num_week_iso with 0 (or median if preferred)
+        df_processed['num_week_iso'] = df_processed['num_week_iso'].fillna(0).astype(int)
+        df_processed["is_week23_peak"] = (df_processed["num_week_iso"] == 23).astype(int)
+        # Black Friday is usually ISO week 47-48
+        df_processed["is_black_friday_week"] = df_processed["num_week_iso"].isin([47, 48]).astype(int)
+    else:
+        # If num_week_iso couldn't be computed, set features to 0
+        df_processed["is_week23_peak"] = 0
+        df_processed["is_black_friday_week"] = 0
+    
+    # Add historic average demand feature (avg_sales_ID)
+    if 'ID' in df_processed.columns:
+        if avg_sales_ID_map is not None:
+            df_processed["avg_sales_ID"] = df_processed["ID"].map(avg_sales_ID_map)
+            # Fill NaN with 0 for products without historical data
+            df_processed["avg_sales_ID"] = df_processed["avg_sales_ID"].fillna(0)
+        else:
+            # If we couldn't load training data, set to 0
+            df_processed["avg_sales_ID"] = 0
+    
+    # Add lag features (set to 0 for test data since we don't have historical sales)
+    # These features are needed to match training data structure
+    df_processed["lag1"] = 0
+    df_processed["lag2"] = 0
+    df_processed["lag3"] = 0
+    df_processed["lag4"] = 0
+    df_processed["lag_mean4"] = 0
     
     # Convert boolean to int if needed
     if 'has_plus_sizes' in df_processed.columns:
@@ -112,7 +213,8 @@ def process_test_data(filepath='test_processed.csv', max_weeks=None, train_categ
     # Get all features (same as training, excluding target and excluded columns)
     # Note: emb_pca_*, emb_cluster, emb_dist are included as features
     exclude_cols = ['color_name', 'image_embedding', 'embedding_array', 'ID', 'knit_structure', 
-                    'num_week_iso', 'weekly_demand', 'Production', 'weekly_sales']
+                    'num_week_iso', 'weekly_demand', 'Production', 'weekly_sales',
+                    'category', 'is_fall', 'waist_type', 'id_season', 'moment', 'woven_structure']
     all_features = [col for col in df_processed.columns if col not in exclude_cols]
     
     # Identify ALL object type columns in test data (CSV loads them as object, not category)
