@@ -21,7 +21,8 @@ def load_and_prepare_train_data(filepath='train_processed.csv', return_seasons=F
     df = pd.read_csv(filepath)
     
     # Define columns to exclude
-    exclude_cols = ['color_name', 'image_embedding', 'ID', 'knit_structure', 
+    # Note: emb_pca_*, emb_cluster, emb_dist are included as features
+    exclude_cols = ['color_name', 'image_embedding', 'embedding_array', 'ID', 'knit_structure', 
                     'num_week_iso', 'weekly_demand', 'Production', 'weekly_sales']
     
     # Get all features (all columns except excluded ones and target)
@@ -31,11 +32,31 @@ def load_and_prepare_train_data(filepath='train_processed.csv', return_seasons=F
     # Note: CSV files load categorical columns as object dtype, so we check for object
     object_cols = df[all_features].select_dtypes(include=['object']).columns.tolist()
     
-    print(f"Found {len(all_features)} features, {len(object_cols)} object columns to convert to categorical")
+    # emb_cluster should be treated as categorical (even though it's numeric)
+    # Add it to categorical features if it exists
+    if 'emb_cluster' in all_features and 'emb_cluster' not in object_cols:
+        # Fill any missing values with -1 (sentinel for invalid embeddings)
+        if df['emb_cluster'].isna().any():
+            df['emb_cluster'] = df['emb_cluster'].fillna(-1)
+        # Convert emb_cluster to categorical type
+        df['emb_cluster'] = df['emb_cluster'].astype(int).astype('category')
+        object_cols.append('emb_cluster')
+    
+    # Count embedding features
+    embedding_features = [col for col in all_features if col.startswith('emb_pca_')]
+    print(f"Found {len(all_features)} features, {len(object_cols)} categorical columns")
+    print(f"  Including {len(embedding_features)} PCA embedding features (emb_pca_1 to emb_pca_{len(embedding_features)})")
+    if 'emb_cluster' in all_features:
+        print(f"  Including emb_cluster (categorical)")
+    if 'emb_dist' in all_features:
+        print(f"  Including emb_dist (numeric)")
     
     # Convert object columns to category dtype and handle missing values
     for col in object_cols:
         if col in df.columns:
+            # emb_cluster is already handled above, skip it here
+            if col == 'emb_cluster':
+                continue
             # Fill missing values with 'MISSING' before converting to category
             df[col] = df[col].astype(str).fillna('MISSING').astype('category')
     
@@ -89,13 +110,24 @@ def process_test_data(filepath='test_processed.csv', max_weeks=None, train_categ
         df_processed['has_plus_sizes'] = df_processed['has_plus_sizes'].astype(int)
     
     # Get all features (same as training, excluding target and excluded columns)
-    exclude_cols = ['color_name', 'image_embedding', 'ID', 'knit_structure', 
+    # Note: emb_pca_*, emb_cluster, emb_dist are included as features
+    exclude_cols = ['color_name', 'image_embedding', 'embedding_array', 'ID', 'knit_structure', 
                     'num_week_iso', 'weekly_demand', 'Production', 'weekly_sales']
     all_features = [col for col in df_processed.columns if col not in exclude_cols]
     
     # Identify ALL object type columns in test data (CSV loads them as object, not category)
     # Convert them to category dtype to match training data
     object_cols_test = df_processed[all_features].select_dtypes(include=['object']).columns.tolist()
+    
+    # emb_cluster should be treated as categorical (even though it's numeric)
+    # Add it to categorical features if it exists
+    if 'emb_cluster' in all_features and 'emb_cluster' not in object_cols_test:
+        # Fill any missing values with -1 (sentinel for invalid embeddings)
+        if df_processed['emb_cluster'].isna().any():
+            df_processed['emb_cluster'] = df_processed['emb_cluster'].fillna(-1)
+        # Convert emb_cluster to categorical type
+        df_processed['emb_cluster'] = df_processed['emb_cluster'].astype(int).astype('category')
+        object_cols_test.append('emb_cluster')
     
     # Also use train_categorical_cols if provided to ensure consistency
     if train_categorical_cols:
@@ -109,6 +141,9 @@ def process_test_data(filepath='test_processed.csv', max_weeks=None, train_categ
     # Convert object columns to category (matching training data)
     for col in cols_to_convert:
         if col in df_processed.columns:
+            # emb_cluster is already handled above, skip it here
+            if col == 'emb_cluster':
+                continue
             # Fill missing values and convert to category
             df_processed[col] = df_processed[col].astype(str).fillna('MISSING').astype('category')
     
