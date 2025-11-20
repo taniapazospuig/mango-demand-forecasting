@@ -5,17 +5,6 @@ A machine learning system for predicting weekly demand for fashion products usin
 ## 👤 Authors
 Jan Aguiló, Júlia López, Tània Pazos, and Aniol Petit
 
-## 📋 Table of Contents
-
-- [Overview](#overview)
-- [Project Structure](#project-structure)
-- [Installation](#installation)
-- [Usage](#usage)
-- [How It Works](#how-it-works)
-- [Configuration](#configuration)
-- [Streamlit App](#streamlit-app)
-- [Features](#features)
-
 ## 🎯 Overview
 
 This project implements a demand forecasting system for fashion products that:
@@ -250,6 +239,3 @@ After running `train.py`, you'll get:
 - `models/checkpoints/model_*.pkl`: Saved model files
 
 ---
-
-**Happy Forecasting! 🥭📈**
-
