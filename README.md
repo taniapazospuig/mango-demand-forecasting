@@ -1,6 +1,12 @@
-# 🥭 Mango Demand Forecasting
+# MANGO Demand Forecasting
 
 A machine learning system for predicting weekly demand for fashion products using LightGBM ensemble models.
+
+## 👤 Authors
+Jan Aguiló
+Júlia López
+Tània Pazos
+Aniol Petit
 
 ## 📋 Table of Contents
 
@@ -245,43 +251,6 @@ After running `train.py`, you'll get:
 - `outputs/feature_importance.csv`: Feature importance rankings
 - `outputs/weekly_predictions_debug.csv`: Weekly predictions breakdown (if enabled)
 - `models/checkpoints/model_*.pkl`: Saved model files
-
-## 🔍 Troubleshooting
-
-### Common Issues
-
-1. **Missing processed data**: Run `data_exploration.ipynb` first
-2. **Model not found**: Train models using `python train.py`
-3. **Feature mismatch**: Ensure test data has same features as training
-4. **Memory issues**: Reduce `N_ENSEMBLE_MODELS` or `max_weeks`
-
-### Tips
-
-- Start with default hyperparameters (tuning is slow)
-- Use ensemble of 1-2 models for faster iteration
-- Check feature importance to understand model behavior
-- Monitor weekly predictions for debugging
-
-## 📚 Additional Resources
-
-- **Notebooks**: See `notebooks/data_exploration.ipynb` for data preprocessing
-- **Analysis**: Check `root_cause_analysis.py` for prediction analysis
-- **Diagnostics**: Use `diagnostic.py` for model diagnostics
-
-## 🤝 Contributing
-
-Feel free to:
-- Report issues
-- Suggest improvements
-- Submit pull requests
-
-## 📄 License
-
-[Add your license here]
-
-## 👤 Author
-
-[Your name/team]
 
 ---
 
