@@ -3,10 +3,7 @@
 A machine learning system for predicting weekly demand for fashion products using LightGBM ensemble models.
 
 ## 👤 Authors
-Jan Aguiló
-Júlia López
-Tània Pazos
-Aniol Petit
+Jan Aguiló, Júlia López, Tània Pazos, and Aniol Petit
 
 ## 📋 Table of Contents
 
