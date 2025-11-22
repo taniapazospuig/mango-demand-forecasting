@@ -11,14 +11,11 @@ Jan Aguiló, Júlia López, Tània Pazos, and Aniol Petit
 ```
 mango-demand-forecasting/
 ├── src/                          # Source code modules
-│   ├── data/                     # Data loading and preprocessing
-│   ├── features/                 # Feature engineering
-│   ├── models/                   # Model training and prediction
-│   └── utils/                    # Utilities and configuration
-├── notebooks/                    # Jupyter notebooks
-│   └── data_exploration.ipynb    # Data preprocessing notebook
+│   └── utils/                    # Configuration
 ├── data/                         # Data files
+├── data_exploration.ipynb        # Data preprocessing notebook
 ├── models/                       # Saved models
+├── outputs/                      # Predictions and feature importance
 ├── train.py                      # Main training script
 ├── app.py                        # Streamlit application
 └── requirements.txt              # Python dependencies
@@ -50,7 +47,7 @@ pip install -r requirements.txt
 Run the Jupyter notebook to preprocess the raw data:
 
 ```bash
-jupyter notebook notebooks/data_exploration.ipynb
+jupyter notebook data_exploration.ipynb
 ```
 
 This notebook cleans and transforms the raw data, engineers features (clustering, trend features, etc.), and creates `data/processed/train_processed.csv` and `data/processed/test_processed.csv`.
