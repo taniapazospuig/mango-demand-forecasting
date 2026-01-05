@@ -18,10 +18,19 @@ def predict_production(models, X_test, df_meta, penalization_factor=1.0, save_we
     Returns:
         DataFrame with columns (ID, Production)
     """
+    # Convert categorical columns to numeric codes (same as training)
+    X_test_processed = X_test.copy()
+    for col in X_test_processed.columns:
+        if X_test_processed[col].dtype.name == 'category':
+            X_test_processed[col] = X_test_processed[col].cat.codes
+        elif X_test_processed[col].dtype == 'object':
+            # Convert remaining object columns to category then to codes
+            X_test_processed[col] = X_test_processed[col].astype('category').cat.codes
+    
     # Make predictions with ensemble
     predictions = []
     for model in models:
-        pred = model.predict(X_test.values)
+        pred = model.predict(X_test_processed.values.astype(float))
         predictions.append(pred)
     
     # Average predictions across models

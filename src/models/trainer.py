@@ -6,14 +6,15 @@ import lightgbm as lgb
 import optuna
 from sklearn.metrics import mean_squared_error
 
-# Import early_stopping callback (compatible with different LightGBM versions)
+# Import callbacks (compatible with different LightGBM versions)
 try:
-    from lightgbm import early_stopping
+    from lightgbm import early_stopping, log_evaluation
 except ImportError:
     try:
-        from lightgbm.callback import early_stopping
+        from lightgbm.callback import early_stopping, log_evaluation
     except ImportError:
         early_stopping = None
+        log_evaluation = None
 
 
 def time_based_cv_split(X, y, seasons, train_seasons, val_season):
@@ -59,17 +60,29 @@ def train_lightgbm_model(X, y, categorical_features, params, num_boost_round=100
     Returns:
         Trained LightGBM model
     """
-    # Prepare categorical features
+    # Prepare categorical features and convert to numeric codes
+    X_processed = X.copy()
     categorical_feature_indices = []
     if categorical_features:
         for cat_feat in categorical_features:
-            if cat_feat in X.columns:
-                idx = X.columns.get_loc(cat_feat)
+            if cat_feat in X_processed.columns:
+                idx = X_processed.columns.get_loc(cat_feat)
                 categorical_feature_indices.append(idx)
+                # Ensure categorical columns are converted to category dtype and then to codes
+                if X_processed[cat_feat].dtype.name != 'category':
+                    X_processed[cat_feat] = X_processed[cat_feat].astype('category')
+                # Convert categorical to numeric codes for LightGBM
+                X_processed[cat_feat] = X_processed[cat_feat].cat.codes
+    
+    # Ensure all columns are numeric
+    for col in X_processed.columns:
+        if X_processed[col].dtype == 'object':
+            # Convert remaining object columns to category then to codes
+            X_processed[col] = X_processed[col].astype('category').cat.codes
     
     # Create LightGBM dataset
     train_data = lgb.Dataset(
-        X.values,
+        X_processed.values.astype(float),
         label=y,
         categorical_feature=categorical_feature_indices if categorical_feature_indices else 'auto',
         free_raw_data=False
@@ -77,8 +90,10 @@ def train_lightgbm_model(X, y, categorical_features, params, num_boost_round=100
     
     # Train model
     callbacks = []
-    if verbose_eval > 0 and early_stopping is not None:
+    if early_stopping is not None:
         callbacks.append(early_stopping(stopping_rounds=50, verbose=False))
+    if verbose_eval > 0 and log_evaluation is not None:
+        callbacks.append(log_evaluation(period=verbose_eval))
     
     model = lgb.train(
         params,
@@ -86,7 +101,6 @@ def train_lightgbm_model(X, y, categorical_features, params, num_boost_round=100
         num_boost_round=num_boost_round,
         valid_sets=[train_data],
         valid_names=['train'],
-        verbose_eval=verbose_eval,
         callbacks=callbacks if callbacks else None
     )
     
@@ -123,28 +137,53 @@ def hyperparameter_tuning(X_train, y_train, X_val, y_val, categorical_features, 
             'random_state': 42
         }
         
-        # Prepare categorical features
+        # Prepare categorical features and convert to numeric codes
+        X_train_processed = X_train.copy()
+        X_val_processed = X_val.copy()
         categorical_feature_indices = []
         if categorical_features:
             for cat_feat in categorical_features:
-                if cat_feat in X_train.columns:
-                    idx = X_train.columns.get_loc(cat_feat)
+                if cat_feat in X_train_processed.columns:
+                    idx = X_train_processed.columns.get_loc(cat_feat)
                     categorical_feature_indices.append(idx)
+                    # Ensure categorical columns are converted to category dtype and then to codes
+                    if X_train_processed[cat_feat].dtype.name != 'category':
+                        X_train_processed[cat_feat] = X_train_processed[cat_feat].astype('category')
+                    if X_val_processed[cat_feat].dtype.name != 'category':
+                        X_val_processed[cat_feat] = X_val_processed[cat_feat].astype('category')
+                    # Save training categories before converting to codes
+                    train_cats = X_train_processed[cat_feat].cat.categories
+                    # Ensure validation set uses same category mapping as training
+                    X_val_processed[cat_feat] = pd.Categorical(X_val_processed[cat_feat], categories=train_cats)
+                    # Convert categorical to numeric codes for LightGBM
+                    X_train_processed[cat_feat] = X_train_processed[cat_feat].cat.codes
+                    X_val_processed[cat_feat] = X_val_processed[cat_feat].cat.codes
+        
+        # Ensure all columns are numeric
+        for col in X_train_processed.columns:
+            if X_train_processed[col].dtype == 'object':
+                X_train_processed[col] = X_train_processed[col].astype('category').cat.codes
+            if col in X_val_processed.columns and X_val_processed[col].dtype == 'object':
+                X_val_processed[col] = X_val_processed[col].astype('category').cat.codes
         
         train_data = lgb.Dataset(
-            X_train.values,
+            X_train_processed.values.astype(float),
             label=y_train,
             categorical_feature=categorical_feature_indices if categorical_feature_indices else 'auto',
             free_raw_data=False
         )
         
         val_data = lgb.Dataset(
-            X_val.values,
+            X_val_processed.values.astype(float),
             label=y_val,
             categorical_feature=categorical_feature_indices if categorical_feature_indices else 'auto',
             reference=train_data,
             free_raw_data=False
         )
+        
+        callbacks = []
+        if early_stopping is not None:
+            callbacks.append(early_stopping(stopping_rounds=50, verbose=False))
         
         model = lgb.train(
             params,
@@ -152,8 +191,7 @@ def hyperparameter_tuning(X_train, y_train, X_val, y_val, categorical_features, 
             num_boost_round=500,
             valid_sets=[val_data],
             valid_names=['val'],
-            verbose_eval=False,
-            callbacks=[early_stopping(stopping_rounds=50, verbose=False)] if early_stopping is not None else None
+            callbacks=callbacks if callbacks else None
         )
         
         y_pred = model.predict(X_val.values)
