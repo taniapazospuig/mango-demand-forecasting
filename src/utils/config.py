@@ -14,25 +14,6 @@ PROCESSED_DATA_DIR = "data/processed"
 MODELS_DIR = "models/checkpoints"
 OUTPUT_DIR = "outputs"
 
-# Feature Configuration
-LOW_IMPORTANCE_FEATURES = [
-    'cluster_velocity_1_6',
-    'cluster_peak_week',
-    'family_demand_trend',
-    'cluster_popularity',
-    'cluster_demand_slope',
-    'cluster_season_growth',
-    'aggregated_family',
-    'cluster_yoy_change',
-]
-
-EXCLUDED_COLUMNS = [
-    'color_name', 'image_embedding', 'embedding_array', 'ID', 'knit_structure',
-    'num_week_iso', 'weekly_demand', 'Production', 'weekly_sales',
-    'waist_type', 'is_fall', 'category', 'id_season', 'moment', 'woven_structure',
-    'R', 'G', 'B', 'phase_in', 'phase_out', 'num_stores', 'num_sizes'
-]
-
 # Default LightGBM Parameters
 DEFAULT_LIGHTGBM_PARAMS = {
     'objective': 'regression',

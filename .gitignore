@@ -34,11 +34,8 @@ wheels/
 *.swo
 *~
 
-# Data files (keep structure, ignore large files)
+# Data files
 *.csv
-!data/sample_submission.csv
-!data/train.csv
-!data/test.csv
 
 # Models
 models/checkpoints/*.pkl
@@ -51,9 +48,6 @@ data/processed/
 # OS
 .DS_Store
 Thumbs.db
-
-# Streamlit
-.streamlit/
 
 # Optuna
 *.db

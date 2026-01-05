@@ -1,6 +1,8 @@
 """Main training script for the Mango Demand Forecasting model."""
 
 import pandas as pd
+import pickle
+import os
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -63,8 +65,6 @@ def main():
     print("=" * 60)
     
     models = []
-    import pickle
-    import os
     os.makedirs('models/checkpoints', exist_ok=True)
     
     for i in range(N_ENSEMBLE_MODELS):
@@ -133,7 +133,7 @@ def main():
     
     # Predict production
     production_df = predict_production(
-        models, X_test, df_meta, PENALIZATION_FACTOR, save_weekly_debug=True
+        models, X_test, df_meta, PENALIZATION_FACTOR, save_weekly_debug=False
     )
     
     # Ensure all test product IDs are in predictions
@@ -150,7 +150,6 @@ def main():
     production_df = production_df.sort_values('ID').reset_index(drop=True)
     
     # Save predictions
-    import os
     os.makedirs('outputs', exist_ok=True)
     output_file = 'outputs/predictions.csv'
     production_df.to_csv(output_file, index=False)
@@ -172,4 +171,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
