@@ -11,15 +11,24 @@ Jan Aguiló, Júlia López, Tània Pazos, and Aniol Petit
 ```
 mango-demand-forecasting/
 ├── src/                          # Source code modules
-│   ├── utils/                    # Configuration
+│   ├── data/                     # Data loading and preparation
+│   │   └── preprocessing.py      # Functions to load processed CSVs for ML
+│   ├── models/                   # Model training and prediction
+│   │   ├── trainer.py            # LightGBM training, CV, hyperparameter tuning
+│   │   └── predictor.py          # Production prediction functions
+│   └── utils/                    # Configuration
 │       └── config.py             # Model parameters and settings
 ├── data/                         # Data files
+│   ├── train.csv                 # Raw training data
+│   ├── test.csv                  # Raw test data
 │   └── processed/                # Processed datasets (created after preprocessing)
+│       ├── train_processed.csv   # Feature-engineered training data
+│       └── test_processed.csv    # Feature-engineered test data
 ├── models/                       # Saved models
 │   └── checkpoints/              # Trained model files (model_0.pkl, model_1.pkl, ...)
 ├── outputs/                      # Predictions and feature importance
-├── data_preprocessing.ipynb      # Data preprocessing notebook
-├── train.py                      # Training script
+├── data_preprocessing.ipynb      # Feature engineering notebook (creates processed CSVs)
+├── train.py                      # Main training script
 └── requirements.txt              # Python dependencies
 ```
 
@@ -44,33 +53,63 @@ pip install -r requirements.txt
 
 ## Usage
 
-### Step 1: Data Preprocessing
+### Step 1: Feature Engineering (One-Time)
 
-Run the Jupyter notebook to preprocess the raw data:
+Run the Jupyter notebook to perform feature engineering on the raw data:
 
 ```bash
 jupyter notebook data_preprocessing.ipynb
 ```
 
-This notebook cleans and transforms the raw data, engineers features (clustering, trend features, etc.), and creates `data/processed/train_processed.csv` and `data/processed/test_processed.csv`.
+**What this notebook does:**
+- Loads raw data from `data/train.csv` and `data/test.csv`
+- Performs extensive feature engineering:
+  - Color clustering (KMeans on color names)
+  - Image embedding PCA and clustering (83 PCA components, 22 clusters)
+  - Trend features (similarity to top/bottom performers)
+  - Cluster-level aggregations (velocity, demand trends, season-on-season growth)
+  - Family-level aggregations (velocity, demand trends)
+  - Temporal features (previous season statistics)
+  - Seasonality indicators (Black Friday, week 23)
+- Saves processed datasets to:
+  - `data/processed/train_processed.csv`
+  - `data/processed/test_processed.csv`
+
+**Note:** This step is computationally intensive and only needs to be run once (or when you want to regenerate features).
 
 ### Step 2: Train Models
 
-Train the ensemble model:
+Train the ensemble model using the processed data:
 
 ```bash
 python train.py
 ```
 
-This will:
-- Load processed training data from `data/processed/train_processed.csv`
-- Perform time-based cross-validation (seasons 86-88 for training, 89 for validation)
-- Optionally run hyperparameter tuning (if enabled in config)
-- Train an ensemble of 5 LightGBM models with different random seeds
-- Save models to `models/checkpoints/model_*.pkl`
-- Process test data from `data/processed/test_processed.csv` (max 30 weeks per product)
-- Generate predictions using the ensemble with a penalization factor of 1.09
-- Save results to `outputs/predictions.csv` and `outputs/feature_importance.csv`
+**What `train.py` does:**
+1. **Data Loading** (`src/data/preprocessing.py`):
+   - Loads processed training data from `data/processed/train_processed.csv`
+   - Separates features (X) from target (y = weekly_demand)
+   - Identifies categorical features for LightGBM
+   - Extracts metadata (seasons, bin_info)
+
+2. **Cross-Validation** (`src/models/trainer.py`):
+   - Performs time-based cross-validation (seasons 86-88 for training, 89 for validation)
+
+3. **Hyperparameter Tuning** (optional):
+   - Runs Optuna optimization if enabled in `src/utils/config.py`
+
+4. **Model Training** (`src/models/trainer.py`):
+   - Trains an ensemble of 5 LightGBM models with different random seeds (42-46)
+   - Saves models to `models/checkpoints/model_*.pkl`
+
+5. **Prediction** (`src/models/predictor.py`):
+   - Loads and processes test data from `data/processed/test_processed.csv`
+   - Limits to max 30 weeks per product
+   - Makes ensemble predictions and aggregates weekly predictions to total production
+   - Applies penalization factor (1.09) to avoid stockouts
+   - Saves results to `outputs/predictions.csv` and `outputs/feature_importance.csv`
+
+**Note:** You can run `train.py` multiple times without re-running the preprocessing notebook, as long as the processed CSVs exist.
 
 ## Model Architecture
 
@@ -94,6 +133,15 @@ The model uses extensive feature engineering including:
 - **Binned Features**: Categorical bins for `num_stores` and `num_sizes` to handle numeric features
 - **Trend Analysis**: Similarity to top/bottom performers, cluster velocity, demand trends
 - **Weekly Forecasting**: Predicts weekly demand per product, then aggregates to total production requirements
+
+## Code Organization
+
+The project is organized into modules:
+
+- **`src/data/preprocessing.py`**: Functions to load processed CSVs and prepare them for ML (separate features/target, identify categoricals, extract metadata)
+- **`src/models/trainer.py`**: Model training functions (LightGBM training, time-based CV split, hyperparameter tuning, feature importance)
+- **`src/models/predictor.py`**: Prediction functions (ensemble prediction, aggregation to production quantities)
+- **`src/utils/config.py`**: Configuration settings
 
 ## Configuration
 
